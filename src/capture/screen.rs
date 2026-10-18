@@ -316,7 +316,13 @@ impl ScreenCapture {
             conf.setHeight(cfg.height);
             // Slightly under the frame period, so capture jitter never makes
             // ScreenCaptureKit skip a frame the pacer needs (as OBS does).
-            conf.setMinimumFrameInterval(CMTime::new(9, cfg.fps as i32 * 10));
+            // Light mode takes exactly the frame rate: fewer frames to
+            // composite and deliver; a late one repeats the previous frame.
+            if crate::hw::light() {
+                conf.setMinimumFrameInterval(CMTime::new(1, cfg.fps as i32));
+            } else {
+                conf.setMinimumFrameInterval(CMTime::new(9, cfg.fps as i32 * 10));
+            }
             conf.setPixelFormat(cfg.pixel_format);
             conf.setQueueDepth(8);
             conf.setShowsCursor(cfg.cursor);
@@ -418,7 +424,9 @@ fn audio_stream(display: &SCDisplay, exclude_own_audio: bool, shared: Arc<Shared
         let conf = SCStreamConfiguration::new();
         conf.setWidth(2);
         conf.setHeight(2);
-        conf.setMinimumFrameInterval(CMTime::new(1, 30));
+        // Its frames are thrown away: as few as possible, without a cursor.
+        conf.setMinimumFrameInterval(CMTime::new(1, 2));
+        conf.setShowsCursor(false);
         conf.setCapturesAudio(true);
         conf.setSampleRate(48000);
         conf.setChannelCount(2);

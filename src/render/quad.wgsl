@@ -165,6 +165,19 @@ fn sample_area(uv: vec2<f32>, foot: vec2<f32>) -> vec4<f32> {
     return clamp(acc / max(wsum, 1e-6), vec4<f32>(0.0), vec4<f32>(1.0));
 }
 
+// A cheap downscale for live previews on slow GPUs: four bilinear taps
+// spread over the footprint (16 texels) instead of `sample_area`'s
+// Catmull-Rom kernel, which reads 25-64 texels per pixel.
+fn sample_fast(uv: vec2<f32>, foot: vec2<f32>) -> vec4<f32> {
+    if foot.x <= 1.001 && foot.y <= 1.001 {
+        return sample_at(uv, 0.0);
+    }
+    let dims = vec2<f32>(textureDimensions(tex, 0));
+    let o = max(foot, vec2<f32>(1.0)) * 0.25 / dims;
+    return (sample_at(uv + vec2<f32>(-o.x, -o.y), 0.0) + sample_at(uv + vec2<f32>(o.x, -o.y), 0.0)
+        + sample_at(uv + vec2<f32>(-o.x, o.y), 0.0) + sample_at(uv + vec2<f32>(o.x, o.y), 0.0)) * 0.25;
+}
+
 // Sample with an optional blur radius given in texture pixels.
 fn sample_blur(uv: vec2<f32>, radius_px: f32) -> vec4<f32> {
     if radius_px < 0.5 {
@@ -324,7 +337,12 @@ fn mode_window(local: vec2<f32>) -> vec4<f32> {
         let t = clamp((p - lo) / (inner_half * 2.0), vec2<f32>(0.0), vec2<f32>(1.0));
         let dims = vec2<f32>(textureDimensions(tex, 0));
         let foot = d.uv.zw * dims / max(inner_half * 2.0, vec2<f32>(1.0));
-        screen = sample_area(d.uv.xy + t * d.uv.zw, foot);
+        // p4.y: fast sampling (live preview on a slow GPU).
+        if d.p4.y > 0.5 {
+            screen = sample_fast(d.uv.xy + t * d.uv.zw, foot);
+        } else {
+            screen = sample_area(d.uv.xy + t * d.uv.zw, foot);
+        }
         screen = vec4<f32>(screen.rgb, 1.0);
     }
     let inset_col = premul(d.p1);

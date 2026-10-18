@@ -253,9 +253,10 @@ impl MovieWriter {
             // The writer may want more audio before taking more video.
             let ahead = ((t_s + 3.0) * mixer::RATE) as usize;
             if !self.feed_audio_chunk(ahead)? {
-                std::thread::sleep(Duration::from_micros(250));
+                // 1 ms: far under a frame, without thousands of wakeups a second.
+                std::thread::sleep(Duration::from_millis(1));
                 spins += 1;
-                if spins > 40_000 {
+                if spins > 10_000 {
                     return Err(self.stalled(&self.video));
                 }
             }
@@ -278,9 +279,10 @@ impl MovieWriter {
                 if unsafe { self.writer.status() } == AVAssetWriterStatus::Failed {
                     bail!("encoder failed: {}", err_text(&self.writer));
                 }
-                std::thread::sleep(Duration::from_micros(250));
+                // 1 ms: far under a frame, without thousands of wakeups a second.
+                std::thread::sleep(Duration::from_millis(1));
                 spins += 1;
-                if spins > 40_000 {
+                if spins > 10_000 {
                     return Err(self.stalled(&audio));
                 }
             }

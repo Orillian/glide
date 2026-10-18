@@ -145,6 +145,9 @@ pub struct Renderer {
     has_camera: bool,
     /// Zero-copy frames still possibly in use by the GPU.
     keep: std::collections::VecDeque<interop::Wrapped>,
+    /// Downscale the screen with a cheap 4-tap filter instead of the sharp
+    /// Catmull-Rom one (live preview on slow GPUs; never for exports).
+    pub fast_sampling: bool,
 }
 
 impl Renderer {
@@ -239,6 +242,7 @@ impl Renderer {
             has_screen: false,
             has_camera: false,
             keep: std::collections::VecDeque::new(),
+            fast_sampling: false,
         };
         r.upload(TexId::Dummy, &Image { width: 1, height: 1, rgba: vec![0, 0, 0, 0] }, false);
         r
@@ -548,6 +552,7 @@ impl Renderer {
                 d.p3 = [r.center.x as f32, r.center.y as f32, r.progress as f32, r.strength as f32];
                 d.p4[0] = r.reach as f32;
             }
+            d.p4[1] = if self.fast_sampling { 1.0 } else { 0.0 };
             let tex = if self.has_screen { TexId::Screen } else { TexId::Dummy };
             layer.push((d, tex));
         }

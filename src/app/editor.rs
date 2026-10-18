@@ -564,6 +564,7 @@ impl Editor {
 
     /// Per-frame housekeeping. Returns true while something animates.
     pub fn tick(&mut self) -> bool {
+        let busy_before = self.background_busy();
         if let Some((t0, from)) = self.playing {
             self.playhead = from + t0.elapsed().as_secs_f64() * 1000.0;
             if self.playhead >= self.duration() && self.voice.is_some() {
@@ -633,7 +634,26 @@ impl Editor {
                 Err(_) => self.status = Some("Transcription crashed".into()),
             }
         }
-        self.playing.is_some() || self.export.running.is_some() || self.transcribing.is_some() || self.voice.is_some() || exposures_changed
+        // Export and transcription only move a progress bar: the app
+        // redraws for them at a slow rate (`background_busy`), not per frame,
+        // and once more when one finishes (to show its result).
+        let finished = busy_before && !self.background_busy();
+        self.playing.is_some() || self.voice.is_some() || exposures_changed || finished
+    }
+
+    /// Whether an export or transcription is running (progress to show).
+    pub fn background_busy(&self) -> bool {
+        self.export.running.is_some() || self.transcribing.is_some()
+    }
+
+    /// Stop playback, ending a voice-over (no-op when paused).
+    pub fn pause(&mut self) {
+        if self.voice.is_some() {
+            self.stop_voiceover();
+        }
+        if self.playing.is_some() {
+            self.toggle_play();
+        }
     }
 
     fn handle_keys(&mut self, ctx: &egui::Context) {
@@ -815,7 +835,12 @@ impl Editor {
                 }
                 let rect = egui::Rect::from_center_size(avail.center(), size);
                 let ppp = ctx.pixels_per_point();
-                let px = ((size.x * ppp) as u32, (size.y * ppp) as u32);
+                let mut px = ((size.x * ppp) as u32, (size.y * ppp) as u32);
+                // Light mode: at most 1920 px wide, drawn scaled up (a full
+                // Retina-size preview is several times the GPU work).
+                if crate::hw::light() && px.0 > 1920 {
+                    px = (1920, (px.1 as f32 * 1920.0 / px.0 as f32) as u32);
+                }
                 if let Some(id) = self.preview.render(egui_renderer, self.playhead, px) {
                     let shadow = egui::epaint::Shadow { offset: [0, 6], blur: 24, spread: 0, color: Color32::from_black_alpha(60) };
                     ui.painter().add(shadow.as_shape(rect, CornerRadius::same(4)));
