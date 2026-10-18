@@ -4,6 +4,8 @@ The download page for Glide, an open-source screen recorder for the Mac. One pre
 
 ## Develop
 
+You need Node 22.17 or later on the 22 line, or Node 24 or later. SvelteKit requires 22.17, the Svelte Vite plugin skips Node 23, and `.npmrc` turns engine mismatches into install errors.
+
 ```sh
 npm install
 npm run dev       # http://localhost:5173
