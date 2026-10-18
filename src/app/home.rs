@@ -100,7 +100,8 @@ impl Default for Settings {
             camera_style: crate::project::model::CameraStyle { mirror: true, ..Default::default() },
             keys: true,
             countdown: true,
-            fps: 60,
+            // Older Macs (light mode) keep up best at 30.
+            fps: if crate::hw::light() { 30 } else { 60 },
             projects_dir: None,
             hide_desktop_icons: false,
             hide_dock: false,
@@ -524,13 +525,18 @@ fn heading(ui: &mut Ui, title: &str) {
 fn combo<T: Clone + PartialEq>(ui: &mut Ui, id: &str, value: &mut T, options: &[(T, String)], enabled: bool) {
     let current = options.iter().find(|(v, _)| v == value).map(|(_, l)| l.clone()).unwrap_or_default();
     ui.add_enabled_ui(enabled, |ui| {
-        egui::ComboBox::from_id_salt(id).width(ui.available_width()).selected_text(current).show_ui(ui, |ui| {
+        // Long names (window titles) end in "…" rather than widen the
+        // sidebar past the window, which pushed the controls out of view.
+        let width = ui.available_width();
+        let r = egui::ComboBox::from_id_salt(id).width(width).truncate().selected_text(current.clone()).show_ui(ui, |ui| {
+            ui.set_max_width(width.max(360.0));
             for (v, label) in options {
-                if ui.selectable_label(v == value, label).clicked() {
+                if ui.add(egui::Button::selectable(v == value, label.as_str()).truncate()).on_hover_text(label).clicked() {
                     *value = v.clone();
                 }
             }
         });
+        r.response.on_hover_text(current);
     });
 }
 

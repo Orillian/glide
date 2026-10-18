@@ -49,16 +49,18 @@ pub struct MovieWriter {
 
 unsafe impl Send for MovieWriter {}
 
-fn video_settings(s: &WriterSpec) -> Retained<Dict> {
+fn video_settings(s: &WriterSpec, quality: Option<f64>) -> Retained<Dict> {
     unsafe {
-        let rate = match s.quality {
+        let rate = match quality {
             Some(q) => (AVVideoQualityKey.unwrap(), num_f(q)),
             None => (AVVideoAverageBitRateKey.unwrap(), num_i(s.bitrate as i64)),
         };
         let mut compression = vec![
             rate,
             (AVVideoExpectedSourceFrameRateKey.unwrap(), num_i(s.fps as i64)),
-            (AVVideoMaxKeyFrameIntervalDurationKey.unwrap(), num_f(2.0)),
+            // A keyframe every 2 s, in frames: some HEVC encoders (Intel
+            // Macs) reject the duration key.
+            (AVVideoMaxKeyFrameIntervalKey.unwrap(), num_i(s.fps as i64 * 2)),
             (AVVideoAllowFrameReorderingKey.unwrap(), num_b(true)),
         ];
         let codec = match s.codec {
@@ -82,7 +84,9 @@ fn video_settings(s: &WriterSpec) -> Retained<Dict> {
         // and Safari decode with a different curve and lift the shadows.
         let color = dict(vec![
             (AVVideoColorPrimariesKey.unwrap(), obj(AVVideoColorPrimaries_ITU_R_709_2.unwrap())),
-            (AVVideoTransferFunctionKey.unwrap(), obj(AVVideoTransferFunction_IEC_sRGB.unwrap())),
+            // AVVideoTransferFunction_IEC_sRGB's value; the symbol itself is
+            // macOS 15+ and would stop the binary loading on macOS 14.
+            (AVVideoTransferFunctionKey.unwrap(), obj(&*ns("IEC_sRGB"))),
             (AVVideoYCbCrMatrixKey.unwrap(), obj(AVVideoYCbCrMatrix_ITU_R_709_2.unwrap())),
         ]);
         let mut settings = vec![
@@ -114,10 +118,16 @@ impl MovieWriter {
             let writer = AVAssetWriter::initWithURL_fileType_error(AVAssetWriter::alloc(), &url, file_type)
                 .map_err(|e| anyhow!("AVAssetWriter: {}", e.localizedDescription()))?;
             writer.setShouldOptimizeForNetworkUse(true);
+            // Not every encoder takes constant quality (an Intel Mac's H.264
+            // doesn't): then encode for the spec's bitrate instead.
+            let mut settings = video_settings(s, s.quality);
+            if s.quality.is_some() && !writer.canApplyOutputSettings_forMediaType(Some(&settings), AVMediaTypeVideo.unwrap()) {
+                settings = video_settings(s, None);
+            }
             let video = AVAssetWriterInput::initWithMediaType_outputSettings(
                 AVAssetWriterInput::alloc(),
                 AVMediaTypeVideo.unwrap(),
-                Some(&video_settings(s)),
+                Some(&settings),
             );
             video.setExpectsMediaDataInRealTime(false);
             video.setMediaTimeScale(TIMESCALE);

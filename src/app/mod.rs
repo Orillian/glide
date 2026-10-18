@@ -1303,8 +1303,12 @@ impl App {
         let camera = (visible && s.camera).then(|| livecap::Source::Camera { id: s.camera_id.clone() });
         let mic = (visible && s.mic && self.selftest.is_none()).then(|| s.mic_id.as_ref().and_then(|id| self.devices.mics.iter().find(|m| &m.id == id)).map(|m| m.name.clone()));
         let live = &mut self.live;
-        // Screens at native resolution, scaled to the canvas (30 fps, as Rec).
-        if live.screen.update(screen, "live preview", |(src, audio)| livecap::LivePreview::start(src, 0, 30, *audio, wake).map_err(|e| format!("{e:#}"))) {
+        // Screens at native resolution, scaled to the canvas (30 fps, as Rec);
+        // in light mode small and at 15 fps (5K frames swamp older Macs).
+        if live.screen.update(screen, "live preview", |(src, audio)| {
+            let (max_px, fps) = if crate::hw::light() { (crate::hw::LIGHT_PREVIEW_EDGE, 15) } else { (0, 30) };
+            livecap::LivePreview::start(src, max_px, fps, *audio, wake).map_err(|e| format!("{e:#}"))
+        }) {
             live.tex = None;
         }
         if live.camera.update(camera, "camera preview", |src| livecap::LivePreview::start(src, 720, 30, false, wake).map_err(|e| format!("{e:#}"))) {
@@ -1328,8 +1332,9 @@ impl App {
                 && let Some(f) = cache.wrap(&pb, wgpu::TextureUsages::TEXTURE_BINDING)
             {
                 // Drawn pixel-aligned at its own size: nearest is exact, and
-                // avoids a blur while the canvas is mid-resize (as Rec).
-                let filter = wgpu::FilterMode::Nearest;
+                // avoids a blur while the canvas is mid-resize (as Rec). Light
+                // mode's small frames are enlarged, so smoothly.
+                let filter = if crate::hw::light() { wgpu::FilterMode::Linear } else { wgpu::FilterMode::Nearest };
                 let id = match live.tex_id {
                     Some(id) => {
                         renderer.update_egui_texture_from_wgpu_texture(&gpu.device, &f.view, filter, id);
@@ -1369,7 +1374,16 @@ impl App {
         }
         let s = &self.settings;
         let ppp = ctx.pixels_per_point();
-        let screen = live.tex.filter(|_| live.screen.running.is_some()).map(|(id, [w, h])| (id, egui::vec2(w as f32, h as f32) / ppp));
+        let screen = live.tex.filter(|_| live.screen.running.is_some()).map(|(id, [w, h])| {
+            let size = egui::vec2(w as f32, h as f32) / ppp;
+            if !crate::hw::light() {
+                return (id, size);
+            }
+            // Light mode's frames are smaller than the canvas: shown filling it.
+            let [cw, ch] = home::canvas_px();
+            let up = (cw as f32 / w as f32).min(ch as f32 / h as f32).max(1.0);
+            (id, size * up)
+        });
         let note = if screen.is_some() {
             None
         } else if let Some(e) = live.screen.error() {

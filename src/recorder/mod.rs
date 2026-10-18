@@ -240,6 +240,20 @@ impl Recorder {
                 (Some(screen::Target::Window(w)), SourceKind::Window, b, px, Some(*id), app)
             }
         };
+        // Near-transparent constant-quality HEVC at native pixels, so fine
+        // text survives scrolling and re-encoding on export stays clean. In
+        // light mode (older Macs) H.264 at a fixed bitrate: the cheapest
+        // encode and decode for them, and the encoder they all have.
+        let codec = if crate::hw::light() { CapCodec::H264 } else { CapCodec::Hevc };
+        // Never more pixels than the hardware encoder takes (else it falls
+        // back to software and the recording stalls).
+        let size = match opts.target {
+            Target::Pattern | Target::Device { .. } => size,
+            _ => {
+                let max_edge = if crate::hw::light() { crate::hw::LIGHT_MAX_EDGE } else { usize::MAX };
+                crate::hw::fit_encoder(if codec == CapCodec::H264 { crate::hw::H264 } else { crate::hw::HEVC }, size, max_edge)
+            }
+        };
         let scale = size.0 as f64 / bounds.w.max(1.0);
         // Only now (the target resolved) create the package folder.
         std::fs::create_dir_all(package.recording_dir())?;
@@ -264,16 +278,16 @@ impl Recorder {
                 app_name: Some("iPhone".into()),
             });
         }
-        // Near-transparent constant-quality HEVC at native pixels, so fine
-        // text survives scrolling and re-encoding on export stays clean.
-        let bitrate = ((size.0 * size.1) as f64 * opts.fps as f64 * 0.08) as u64;
+        // H.264 needs more bits than HEVC for the same sharpness.
+        let bits_per_pixel = if codec == CapCodec::H264 { 0.15 } else { 0.08 };
+        let bitrate = ((size.0 * size.1) as f64 * opts.fps as f64 * bits_per_pixel) as u64;
         let cap = CapOptions {
             output: package.rec("screen.mov"),
             size,
             fps: opts.fps,
-            codec: CapCodec::Hevc,
+            codec,
             bitrate: bitrate.max(4_000_000),
-            quality: Some(RECORD_QUALITY),
+            quality: (codec == CapCodec::Hevc).then_some(RECORD_QUALITY),
             system_audio: opts.system_audio,
             mic: opts.mic.clone(),
             webcam: None,
@@ -285,7 +299,7 @@ impl Recorder {
             test_pattern: matches!(opts.target, Target::Pattern).then_some(false),
             audio_layout: AudioLayout::Stems,
             gains_db: [0.0, 0.0],
-            mic_backend: MicBackend::Sck,
+            mic_backend: if screen::captures_microphone() { MicBackend::Sck } else { MicBackend::Avcapture },
             scene: CapScene::Screen,
             hide_desktop_icons: opts.hide_desktop_icons,
             hide_dock: opts.hide_dock,

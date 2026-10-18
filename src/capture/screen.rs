@@ -7,7 +7,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{AnyThread, DefinedClass, define_class, msg_send};
+use objc2::{AnyThread, DefinedClass, define_class, msg_send, sel};
 use objc2_core_graphics::{CGDisplayCopyDisplayMode, CGDisplayMode, kCGColorSpaceSRGB, kCGDisplayStreamYCbCrMatrix_ITU_R_709_2};
 use objc2_core_media::{CMSampleBuffer, CMTime};
 use objc2_core_video::CVPixelBuffer;
@@ -132,6 +132,11 @@ pub fn find_window(sel: &str) -> Result<WindowInfo> {
         .filter(|w| format!("{} {}", w.app, w.title).to_lowercase().contains(&lower))
         .max_by(|a, b| (a.size.0 * a.size.1).total_cmp(&(b.size.0 * b.size.1)))
         .ok_or_else(|| anyhow!("no on-screen window matches {sel:?} (see `glide devices`)"))
+}
+
+/// ScreenCaptureKit captures the microphone itself only on macOS 15+.
+pub fn captures_microphone() -> bool {
+    unsafe { SCStreamConfiguration::new() }.respondsToSelector(sel!(setCaptureMicrophone:))
 }
 
 /// CGWindowLevel of the Dock (kCGDockWindowLevel).
@@ -315,7 +320,10 @@ impl ScreenCapture {
             conf.setPixelFormat(cfg.pixel_format);
             conf.setQueueDepth(8);
             conf.setShowsCursor(cfg.cursor);
-            conf.setShowMouseClicks(cfg.clicks);
+            // showMouseClicks is macOS 15+; earlier systems have no selector.
+            if conf.respondsToSelector(sel!(setShowMouseClicks:)) {
+                conf.setShowMouseClicks(cfg.clicks);
+            }
             conf.setScalesToFit(true);
             conf.setPreservesAspectRatio(true);
             conf.setCaptureResolution(SCCaptureResolutionType::Best);
