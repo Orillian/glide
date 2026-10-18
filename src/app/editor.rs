@@ -1017,12 +1017,16 @@ impl Editor {
                     } else {
                         widgets::toggle_row(ui, "Loop", &mut s.gif_loop);
                     }
-                    let (w, h) = self.preview.scene.sizes.render_size(s.height);
+                    let (rw, rh) = self.preview.scene.sizes.render_size(s.height);
+                    let (w, h) = crate::export::output_size(&self.preview.scene.sizes, &s);
                     let secs = self.duration() / 1000.0;
                     let mb = s.estimate_mb(w, h, secs);
                     widgets::caption(ui, &format!("{w}×{h} • {:.1} s • about {:.0} MB", secs, mb.max(0.1)));
-                    if s.format == ExportFormat::Mp4 && s.codec_for(w, h) != s.codec {
+                    if s.format == ExportFormat::Mp4 && s.codec_for(rw, rh) != s.codec {
                         widgets::caption(ui, "HEVC at this size (H.264 stops at 4096×2304)");
+                    }
+                    if (w, h) != (rw, rh) {
+                        widgets::caption(ui, &format!("This Mac's video encoder can't take {rw}×{rh}, so it exports at {w}×{h}"));
                     }
                 });
                 if s != self.project.export {
@@ -1046,8 +1050,10 @@ impl Editor {
                         Some(Ok((path, stats))) => {
                             ui.label(RichText::new("✓ Exported").color(Color32::from_rgb(52, 199, 89)));
                             widgets::caption(ui, &format!(
-                                "{} • {:.1} MB • {:.1}× real time",
+                                "{} • {}×{} • {:.1} MB • {:.1}× real time",
                                 path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                                stats.width,
+                                stats.height,
                                 stats.bytes as f64 / 1e6,
                                 stats.speed()
                             ));

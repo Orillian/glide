@@ -271,21 +271,26 @@ pub fn run(job: &Job, progress: ProgressFn, cancel: &AtomicBool) -> Result<Stats
     Ok(stats)
 }
 
-fn run_pass(job: &Job, bitrate: Option<u64>, progress: ProgressFn, cancel: &AtomicBool) -> Result<Stats> {
-    let started = Instant::now();
-    let s = job.settings;
-    let mut scene = Scene::new(job.project.clone(), &job.recording, s.fps as f64);
-    let (w, h) = scene.sizes.render_size(s.height);
-    // No bigger than the hardware encoder takes: older Macs' stops at
-    // 4096×2304, and their software encoder crawls at 5K.
-    let (w, h) = match (s.format, s.codec_for(w, h)) {
-        (ExportFormat::Mp4, Codec::H264 | Codec::Hevc) => {
-            let fourcc = if s.codec_for(w, h) == Codec::H264 { crate::hw::H264 } else { crate::hw::HEVC };
+/// The size an export comes out at: the chosen resolution, made no bigger
+/// than the hardware encoder takes (older Macs' stops at 4096×2304, and
+/// their software encoder crawls at 5K). The export sheet shows this.
+pub fn output_size(sizes: &crate::engine::sizes::Sizes, s: &ExportSettings) -> (u32, u32) {
+    let (w, h) = sizes.render_size(s.height);
+    match (s.format, s.codec_for(w, h)) {
+        (ExportFormat::Mp4, codec @ (Codec::H264 | Codec::Hevc)) => {
+            let fourcc = if codec == Codec::H264 { crate::hw::H264 } else { crate::hw::HEVC };
             let (fw, fh) = crate::hw::fit_encoder(fourcc, (w as usize, h as usize), usize::MAX);
             (fw as u32, fh as u32)
         }
         _ => (w, h),
-    };
+    }
+}
+
+fn run_pass(job: &Job, bitrate: Option<u64>, progress: ProgressFn, cancel: &AtomicBool) -> Result<Stats> {
+    let started = Instant::now();
+    let s = job.settings;
+    let mut scene = Scene::new(job.project.clone(), &job.recording, s.fps as f64);
+    let (w, h) = output_size(&scene.sizes, &s);
     let total = scene.frame_count().max(1);
     let gpu = Gpu::headless()?;
     let mut pump = FramePump::new(gpu, w, h);

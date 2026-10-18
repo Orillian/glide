@@ -313,6 +313,8 @@ struct App {
     /// Native textures to unregister from the main window's renderer on
     /// its next redraw (a closed editor's preview).
     stale_textures: Vec<egui::TextureId>,
+    /// When playback's next preview frame is due (redraws are paced to it).
+    next_frame_at: Option<Instant>,
     finished: Arc<Mutex<Option<Finished>>>,
     error: Option<String>,
     menubar: Option<menubar::MenuBar>,
@@ -371,6 +373,7 @@ impl App {
             live: Live::default(),
             main_occluded: false,
             stale_textures: vec![],
+            next_frame_at: None,
             finished: Arc::new(Mutex::new(None)),
             error: None,
             menubar: None,
@@ -2021,9 +2024,17 @@ impl ApplicationHandler for App {
         // Nothing to show while the window is hidden or covered.
         let shown = self.main.as_ref().is_some_and(|w| w.window.is_visible() != Some(false)) && !self.main_occluded;
         if animating && shown && let Some(w) = &self.main {
-            w.window.request_redraw();
-            // One redraw per preview frame (30 fps in light mode), not 125.
-            next = now + Duration::from_millis(if crate::hw::light() { 33 } else { 16 });
+            // One redraw per preview frame (30 fps in light mode). Every
+            // redraw wakes this loop again, so redraw only once it's due.
+            let period = Duration::from_millis(if crate::hw::light() { 33 } else { 16 });
+            let due = self.next_frame_at.unwrap_or(now);
+            if due <= now {
+                w.window.request_redraw();
+                // Keep the cadence; restart it after a stall.
+                let after = due + period;
+                self.next_frame_at = Some(if after > now { after } else { now + period });
+            }
+            next = next.min(self.next_frame_at.unwrap_or(now + period));
         } else if busy && shown && let Some(w) = &mut self.main {
             // Export/transcription progress: a few redraws a second.
             if w.repaint_at.is_none() {
