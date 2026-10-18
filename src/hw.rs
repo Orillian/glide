@@ -102,11 +102,26 @@ pub fn fit_encoder(codec: u32, size: (usize, usize), max_edge: usize) -> (usize,
     let long = size.0.max(size.1) as f64;
     let mut s = (max_edge as f64 / long).min(1.0);
     let start = scaled(s);
+    let mut failed: Option<f64> = None;
     while long * s >= 640.0 {
         let candidate = scaled(s);
         if hw_encodes(codec, candidate.0, candidate.1) {
-            return candidate;
+            // 10% steps can skip sizes the encoder takes (5K: 4148 px wide
+            // fails, 3732 fits, yet 4096 fits too): bisect up to the limit.
+            let Some(mut hi) = failed else { return candidate };
+            let (mut lo, mut best) = (s, candidate);
+            while (hi - lo) * long > 2.0 {
+                let mid = (lo + hi) / 2.0;
+                let m = scaled(mid);
+                if hw_encodes(codec, m.0, m.1) {
+                    (lo, best) = (mid, m);
+                } else {
+                    hi = mid;
+                }
+            }
+            return best;
         }
+        failed = Some(s);
         s *= 0.9;
     }
     start
@@ -133,6 +148,10 @@ mod tests {
         for codec in [H264, HEVC] {
             let (w, h) = fit_encoder(codec, (5120, 2880), usize::MAX);
             assert!(hw_encodes(codec, w, h), "{w}x{h}");
+            // As large as the encoder allows, not a 10% step below it.
+            if hw_encodes(codec, 4096, 2304) {
+                assert!(w >= 4090, "{w}x{h}");
+            }
         }
     }
 }
