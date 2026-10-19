@@ -187,7 +187,10 @@ impl Session {
         let pacer_stop = stop.clone();
         let fps = o.fps;
         sess.pacer = Some(std::thread::spawn(move || {
-            let period = Duration::from_secs_f64(1.0 / fps as f64 / 2.0);
+            // Twice per frame; light mode once (output lags real time by
+            // `LAG_SECS` or more anyway, so frames still land in their slot).
+            let per_frame = if crate::hw::light() { 1.0 } else { 2.0 };
+            let period = Duration::from_secs_f64(1.0 / fps as f64 / per_frame);
             while !pacer_stop.load(Ordering::SeqCst) {
                 let now = secs(host_now());
                 // Plain threads have no autorelease pool; without one every

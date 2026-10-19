@@ -34,7 +34,8 @@ pub(super) fn encode(
     enc.set_repeat(if s.gif_loop { gif::Repeat::Infinite } else { gif::Repeat::Finite(0) })?;
     // Lower is slower and better; Studio spends more time per frame.
     let speed = if s.quality == Quality::Studio { 4 } else { 10 };
-    let workers = std::thread::available_parallelism().map_or(4, |n| n.get()).saturating_sub(1).max(2);
+    // Light mode: two quantizers, leaving the Mac usable while it exports.
+    let workers = if crate::hw::light() { 2 } else { std::thread::available_parallelism().map_or(4, |n| n.get()).saturating_sub(1).max(2) };
 
     let (job_tx, job_rx) = mpsc::sync_channel::<(u64, Option<Delta>)>(workers * 2);
     let job_rx = std::sync::Arc::new(std::sync::Mutex::new(job_rx));

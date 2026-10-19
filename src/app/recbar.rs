@@ -111,7 +111,9 @@ fn pulse(layer: &AnyObject, on: bool) {
     // SAFETY: CALayer/CABasicAnimation messages with matching types.
     unsafe {
         let key = ns("pulse");
-        if !on {
+        // Light mode: a steady dot (an endless animation keeps the
+        // compositor busy for the whole recording).
+        if !on || crate::hw::light() {
             let _: () = msg_send![layer, removeAnimationForKey: &*key];
             return;
         }
@@ -164,9 +166,19 @@ impl RecordBar {
         // The pill: blur behind, a faint tint, a hairline border.
         let bg: Retained<Background> = unsafe { msg_send![Background::alloc(mtm), initWithFrame: rect(0.0, 0.0, W, H)] };
         bg.setMaterial(NSVisualEffectMaterial::HUDWindow);
-        bg.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
-        bg.setState(NSVisualEffectState::Active);
         bg.setWantsLayer(true);
+        if crate::hw::light() {
+            // A plain dark pill: blurring what's behind it means
+            // re-compositing it whenever the screen changes.
+            bg.setBlendingMode(NSVisualEffectBlendingMode::WithinWindow);
+            bg.setState(NSVisualEffectState::Inactive);
+            if let Some(l) = bg.layer() {
+                l.setBackgroundColor(Some(&cg(&NSColor::colorWithWhite_alpha(0.12, 0.96))));
+            }
+        } else {
+            bg.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
+            bg.setState(NSVisualEffectState::Active);
+        }
         if let Some(l) = bg.layer() {
             l.setCornerRadius(H / 2.0);
             l.setMasksToBounds(true);

@@ -33,9 +33,12 @@ impl Preview {
         let camera = rec.meta.camera.as_ref().and_then(|c| FrameSource::open(&rd.join(&c.file)).ok());
         let cache = TextureCache::new(&gpu.device);
         let mut renderer = Renderer::new(gpu);
+        // Older Macs' GPUs can't afford the export-quality downscale live.
+        renderer.fast_sampling = crate::hw::light();
         renderer.prepare(&project.style, rec, Some(&package));
         Preview {
-            scene: Scene::new(project.clone(), rec, 60.0),
+            // Light mode previews at 30 fps (exports keep their own rate).
+            scene: Scene::new(project.clone(), rec, if crate::hw::light() { 30.0 } else { 60.0 }),
             renderer,
             cache,
             screen,

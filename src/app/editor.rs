@@ -564,6 +564,7 @@ impl Editor {
 
     /// Per-frame housekeeping. Returns true while something animates.
     pub fn tick(&mut self) -> bool {
+        let busy_before = self.background_busy();
         if let Some((t0, from)) = self.playing {
             self.playhead = from + t0.elapsed().as_secs_f64() * 1000.0;
             if self.playhead >= self.duration() && self.voice.is_some() {
@@ -633,7 +634,26 @@ impl Editor {
                 Err(_) => self.status = Some("Transcription crashed".into()),
             }
         }
-        self.playing.is_some() || self.export.running.is_some() || self.transcribing.is_some() || self.voice.is_some() || exposures_changed
+        // Export and transcription only move a progress bar: the app
+        // redraws for them at a slow rate (`background_busy`), not per frame,
+        // and once more when one finishes (to show its result).
+        let finished = busy_before && !self.background_busy();
+        self.playing.is_some() || self.voice.is_some() || exposures_changed || finished
+    }
+
+    /// Whether an export or transcription is running (progress to show).
+    pub fn background_busy(&self) -> bool {
+        self.export.running.is_some() || self.transcribing.is_some()
+    }
+
+    /// Stop playback, ending a voice-over (no-op when paused).
+    pub fn pause(&mut self) {
+        if self.voice.is_some() {
+            self.stop_voiceover();
+        }
+        if self.playing.is_some() {
+            self.toggle_play();
+        }
     }
 
     fn handle_keys(&mut self, ctx: &egui::Context) {
@@ -815,7 +835,12 @@ impl Editor {
                 }
                 let rect = egui::Rect::from_center_size(avail.center(), size);
                 let ppp = ctx.pixels_per_point();
-                let px = ((size.x * ppp) as u32, (size.y * ppp) as u32);
+                let mut px = ((size.x * ppp) as u32, (size.y * ppp) as u32);
+                // Light mode: at most 1920 px wide, drawn scaled up (a full
+                // Retina-size preview is several times the GPU work).
+                if crate::hw::light() && px.0 > 1920 {
+                    px = (1920, (px.1 as f32 * 1920.0 / px.0 as f32) as u32);
+                }
                 if let Some(id) = self.preview.render(egui_renderer, self.playhead, px) {
                     let shadow = egui::epaint::Shadow { offset: [0, 6], blur: 24, spread: 0, color: Color32::from_black_alpha(60) };
                     ui.painter().add(shadow.as_shape(rect, CornerRadius::same(4)));
@@ -992,12 +1017,16 @@ impl Editor {
                     } else {
                         widgets::toggle_row(ui, "Loop", &mut s.gif_loop);
                     }
-                    let (w, h) = self.preview.scene.sizes.render_size(s.height);
+                    let (rw, rh) = self.preview.scene.sizes.render_size(s.height);
+                    let (w, h) = crate::export::output_size(&self.preview.scene.sizes, &s);
                     let secs = self.duration() / 1000.0;
                     let mb = s.estimate_mb(w, h, secs);
                     widgets::caption(ui, &format!("{w}×{h} • {:.1} s • about {:.0} MB", secs, mb.max(0.1)));
-                    if s.format == ExportFormat::Mp4 && s.codec_for(w, h) != s.codec {
+                    if s.format == ExportFormat::Mp4 && s.codec_for(rw, rh) != s.codec {
                         widgets::caption(ui, "HEVC at this size (H.264 stops at 4096×2304)");
+                    }
+                    if (w, h) != (rw, rh) {
+                        widgets::caption(ui, &format!("This Mac's video encoder can't take {rw}×{rh}, so it exports at {w}×{h}"));
                     }
                 });
                 if s != self.project.export {
@@ -1021,8 +1050,10 @@ impl Editor {
                         Some(Ok((path, stats))) => {
                             ui.label(RichText::new("✓ Exported").color(Color32::from_rgb(52, 199, 89)));
                             widgets::caption(ui, &format!(
-                                "{} • {:.1} MB • {:.1}× real time",
+                                "{} • {}×{} • {:.1} MB • {:.1}× real time",
                                 path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                                stats.width,
+                                stats.height,
                                 stats.bytes as f64 / 1e6,
                                 stats.speed()
                             ));

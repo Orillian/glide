@@ -203,6 +203,8 @@ struct Live {
     cam_tex: Option<egui::TextureHandle>,
     /// Displayed levels (peak hold with decay).
     levels: [f32; 2],
+    /// When `levels` last decayed.
+    levels_at: Option<Instant>,
 }
 
 /// Area picker state, in overlay-window points (= display points).
@@ -308,6 +310,11 @@ struct App {
     live: Live,
     /// The main window is minimised, hidden or fully covered.
     main_occluded: bool,
+    /// Native textures to unregister from the main window's renderer on
+    /// its next redraw (a closed editor's preview).
+    stale_textures: Vec<egui::TextureId>,
+    /// When playback's next preview frame is due (redraws are paced to it).
+    next_frame_at: Option<Instant>,
     finished: Arc<Mutex<Option<Finished>>>,
     error: Option<String>,
     menubar: Option<menubar::MenuBar>,
@@ -365,6 +372,8 @@ impl App {
             finishing: false,
             live: Live::default(),
             main_occluded: false,
+            stale_textures: vec![],
+            next_frame_at: None,
             finished: Arc::new(Mutex::new(None)),
             error: None,
             menubar: None,
@@ -502,6 +511,17 @@ impl App {
         }
     }
 
+    /// Unregister the open editor's preview texture from the window's
+    /// renderer (it would otherwise hold its GPU target for good). Done on
+    /// the next redraw: this may run while the window is out for drawing.
+    fn release_editor_texture(&mut self) {
+        if let View::Editor(ed) = &self.view
+            && let Some(id) = ed.preview.texture_id
+        {
+            self.stale_textures.push(id);
+        }
+    }
+
     fn open_project(&mut self, el: &ActiveEventLoop, path: PathBuf) {
         self.show_main(el);
         let Some(gpu) = self.gpu.clone() else { return };
@@ -510,6 +530,7 @@ impl App {
                 if let Some(w) = &self.main {
                     w.window.set_title(&ed.project.name);
                 }
+                self.release_editor_texture();
                 self.view = View::Editor(Box::new(ed));
             }
             Err(e) => self.error = Some(format!("Couldn't open {}: {e:#}", path.display())),
@@ -590,6 +611,8 @@ impl App {
         }
         if let View::Editor(ed) = &mut self.view {
             ed.save();
+            // The editor is hidden while recording: don't keep playing it.
+            ed.pause();
         }
         let countdown = self.settings.countdown.then(|| Instant::now() + Duration::from_secs(3));
         self.recording = Some(Recording { rec: None, countdown_until: countdown });
@@ -1303,8 +1326,12 @@ impl App {
         let camera = (visible && s.camera).then(|| livecap::Source::Camera { id: s.camera_id.clone() });
         let mic = (visible && s.mic && self.selftest.is_none()).then(|| s.mic_id.as_ref().and_then(|id| self.devices.mics.iter().find(|m| &m.id == id)).map(|m| m.name.clone()));
         let live = &mut self.live;
-        // Screens at native resolution, scaled to the canvas (30 fps, as Rec).
-        if live.screen.update(screen, "live preview", |(src, audio)| livecap::LivePreview::start(src, 0, 30, *audio, wake).map_err(|e| format!("{e:#}"))) {
+        // Screens at native resolution, scaled to the canvas (30 fps, as Rec);
+        // in light mode small and at 15 fps (5K frames swamp older Macs).
+        if live.screen.update(screen, "live preview", |(src, audio)| {
+            let (max_px, fps) = if crate::hw::light() { (crate::hw::LIGHT_PREVIEW_EDGE, 15) } else { (0, 30) };
+            livecap::LivePreview::start(src, max_px, fps, *audio, wake).map_err(|e| format!("{e:#}"))
+        }) {
             live.tex = None;
         }
         if live.camera.update(camera, "camera preview", |src| livecap::LivePreview::start(src, 720, 30, false, wake).map_err(|e| format!("{e:#}"))) {
@@ -1328,8 +1355,9 @@ impl App {
                 && let Some(f) = cache.wrap(&pb, wgpu::TextureUsages::TEXTURE_BINDING)
             {
                 // Drawn pixel-aligned at its own size: nearest is exact, and
-                // avoids a blur while the canvas is mid-resize (as Rec).
-                let filter = wgpu::FilterMode::Nearest;
+                // avoids a blur while the canvas is mid-resize (as Rec). Light
+                // mode's small frames are enlarged, so smoothly.
+                let filter = if crate::hw::light() { wgpu::FilterMode::Linear } else { wgpu::FilterMode::Nearest };
                 let id = match live.tex_id {
                     Some(id) => {
                         renderer.update_egui_texture_from_wgpu_texture(&gpu.device, &f.view, filter, id);
@@ -1358,18 +1386,33 @@ impl App {
         if let Some((_, p)) = &live.camera.running {
             upload(&mut live.cam_tex, p, "camera-preview");
         }
-        // Peak hold falling ~20 dB a second at 60 fps.
+        // Peak hold falling ~20 dB a second, however often this runs.
         let sys = live.screen.running.as_ref().map(|(_, p)| p.take_level());
         let mic = live.mic.running.as_ref().map(|(_, m)| m.take_level());
+        let now = Instant::now();
+        let dt = live.levels_at.map_or(0.0, |t| now.duration_since(t).as_secs_f32()).min(1.0);
+        live.levels_at = Some(now);
+        let decay = 0.97f32.powf(dt * 60.0);
         for (shown, new) in live.levels.iter_mut().zip([sys, mic]) {
-            *shown = new.map_or(0.0, |n| n.max(*shown * 0.97));
+            *shown = new.map_or(0.0, |n| n.max(*shown * decay));
         }
-        if live.levels.iter().any(|l| *l > 0.001) {
-            ctx.request_repaint_after(Duration::from_millis(50));
+        // Redraw for the meters only while they show something (-40 dB),
+        // and at 10 Hz in light mode.
+        if live.levels.iter().any(|l| *l > 0.01) {
+            ctx.request_repaint_after(Duration::from_millis(if crate::hw::light() { 100 } else { 50 }));
         }
         let s = &self.settings;
         let ppp = ctx.pixels_per_point();
-        let screen = live.tex.filter(|_| live.screen.running.is_some()).map(|(id, [w, h])| (id, egui::vec2(w as f32, h as f32) / ppp));
+        let screen = live.tex.filter(|_| live.screen.running.is_some()).map(|(id, [w, h])| {
+            let size = egui::vec2(w as f32, h as f32) / ppp;
+            if !crate::hw::light() {
+                return (id, size);
+            }
+            // Light mode's frames are smaller than the canvas: shown filling it.
+            let [cw, ch] = home::canvas_px();
+            let up = (cw as f32 / w as f32).min(ch as f32 / h as f32).max(1.0);
+            (id, size * up)
+        });
         let note = if screen.is_some() {
             None
         } else if let Some(e) = live.screen.error() {
@@ -1403,6 +1446,7 @@ impl App {
             // Its thumbnail re-renders if the project changed.
             self.thumbs.forget(&ed.package.root);
         }
+        self.release_editor_texture();
         self.view = View::Start;
         self.projects = home::scan_projects(&self.settings.dir());
         if let Some(w) = &self.main {
@@ -1773,6 +1817,9 @@ impl App {
         let Some(gpu) = self.gpu.clone() else { return };
         let Some(mut win) = self.take_window(which) else { return };
         if which == Which::Main {
+            for id in self.stale_textures.drain(..) {
+                win.renderer.free_texture(&id);
+            }
             let fs = macos::fullscreen_display(&win.window);
             theme::FULLSCREEN.store(fs.is_some() || macos::is_fullscreen(&win.window), std::sync::atomic::Ordering::Relaxed);
             theme::FULLSCREEN_DISPLAY.store(fs.unwrap_or(0), std::sync::atomic::Ordering::Relaxed);
@@ -1967,16 +2014,32 @@ impl ApplicationHandler for App {
             self.last_tick = Instant::now();
             self.tick(el);
         }
-        let animating = match &mut self.view {
-            View::Editor(ed) => ed.tick(),
-            View::Start => false,
+        let (animating, busy) = match &mut self.view {
+            View::Editor(ed) => (ed.tick(), ed.background_busy()),
+            View::Start => (false, false),
         };
         let live = self.recording.is_some() || self.finishing;
         let now = Instant::now();
         let mut next = now + Duration::from_millis(if live { 200 } else { 500 });
-        if animating && let Some(w) = &self.main {
-            w.window.request_redraw();
-            next = now + Duration::from_millis(8);
+        // Nothing to show while the window is hidden or covered.
+        let shown = self.main.as_ref().is_some_and(|w| w.window.is_visible() != Some(false)) && !self.main_occluded;
+        if animating && shown && let Some(w) = &self.main {
+            // One redraw per preview frame (30 fps in light mode). Every
+            // redraw wakes this loop again, so redraw only once it's due.
+            let period = Duration::from_millis(if crate::hw::light() { 33 } else { 16 });
+            let due = self.next_frame_at.unwrap_or(now);
+            if due <= now {
+                w.window.request_redraw();
+                // Keep the cadence; restart it after a stall.
+                let after = due + period;
+                self.next_frame_at = Some(if after > now { after } else { now + period });
+            }
+            next = next.min(self.next_frame_at.unwrap_or(now + period));
+        } else if busy && shown && let Some(w) = &mut self.main {
+            // Export/transcription progress: a few redraws a second.
+            if w.repaint_at.is_none() {
+                w.repaint_at = Some(now + Duration::from_millis(250));
+            }
         }
         for w in self.main.iter_mut().chain(self.overlays.iter_mut()) {
             if let Some(t) = w.repaint_at {

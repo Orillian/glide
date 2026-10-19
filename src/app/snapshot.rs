@@ -68,6 +68,16 @@ pub fn render(shot: &Shot, out_file: &Path) -> Result<()> {
     let mut devices = Devices::load();
     if shot.window {
         settings.source = home::SourceKind::Window;
+        // Without Screen Recording access no windows are listed: a stand-in
+        // with a long title (long titles once pushed the sidebar off screen).
+        if devices.windows.is_empty() {
+            devices.windows.push(home::WindowEntry {
+                id: 1,
+                label: "Google Chrome — Kampe launch strategy - Claude — a very long window title that keeps going".into(),
+                size: (1280.0, 800.0),
+                display: (2560.0, 1440.0),
+            });
+        }
         settings.window = devices.windows.first().map(|w| w.id);
     }
     let projects = home::scan_projects(&settings.dir());

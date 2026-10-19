@@ -231,7 +231,8 @@ unsafe impl Send for LivePreview {}
 impl LivePreview {
     /// Start previewing `source` at `fps` frames per second, calling
     /// `on_frame` (from a capture queue) after each new frame. Screens are
-    /// captured at their native pixel size and scaled to `set_target`;
+    /// captured at their native pixel size and scaled to `set_target`, or
+    /// with `max_px` > 0 captured at most that long edge and not rescaled;
     /// cameras to at most `max_px` on the long edge. Glide's own windows are
     /// left out. With `audio`, a screen preview also measures the system
     /// audio it would record (`level`).
@@ -282,11 +283,15 @@ impl LivePreview {
             if size.0 < 2.0 || size.1 < 2.0 {
                 bail!("nothing to preview");
             }
-            // Native pixels (Retina), as Rec captures; scaled down later.
-            let even = |v: f64| ((v * px).round() as usize / 2 * 2).max(2);
+            // Native pixels (Retina), as Rec captures; scaled down later. With
+            // `max_px`, at most that long edge, scaled by ScreenCaptureKit and
+            // from point-sized frames when that's enough (light mode).
+            let cap = if max_px > 0 { (max_px as f64 / (size.0.max(size.1) * px)).min(1.0) } else { 1.0 };
+            let even = |v: f64| ((v * px * cap).round() as usize / 2 * 2).max(2);
             conf.setWidth(even(size.0));
             conf.setHeight(even(size.1));
-            conf.setCaptureResolution(SCCaptureResolutionType::Best);
+            let nominal = max_px > 0 && even(size.0) as f64 <= size.0;
+            conf.setCaptureResolution(if nominal { SCCaptureResolutionType::Nominal } else { SCCaptureResolutionType::Best });
             conf.setColorSpaceName(objc2_core_graphics::kCGColorSpaceSRGB);
             conf.setMinimumFrameInterval(CMTime::new(1, fps.max(1) as i32));
             conf.setPixelFormat(kCVPixelFormatType_32BGRA);
@@ -301,7 +306,7 @@ impl LivePreview {
             let latest = Arc::new(Mutex::new(None));
             let level = Arc::new(AtomicU32::new(0));
             let target = Arc::new(AtomicU64::new(0));
-            let output = PreviewOutput::create(latest.clone(), level.clone(), target.clone(), true, Box::new(on_frame));
+            let output = PreviewOutput::create(latest.clone(), level.clone(), target.clone(), max_px == 0, Box::new(on_frame));
             let stream = SCStream::initWithFilter_configuration_delegate(SCStream::alloc(), &filter, &conf, None);
             let queue = DispatchQueue::new("glide.preview", None);
             let proto: &ProtocolObject<dyn SCStreamOutput> = ProtocolObject::from_ref(&*output);

@@ -760,7 +760,8 @@ impl Default for ExportSettings {
         ExportSettings {
             format: ExportFormat::Mp4,
             height: Self::NATIVE,
-            fps: 60,
+            // Light mode (older Macs): half the frames to render and encode.
+            fps: if crate::hw::light() { 30 } else { 60 },
             quality: Quality::Social,
             codec: Codec::H264,
             gif_loop: true,
@@ -878,13 +879,13 @@ mod tests {
         let p: Project = serde_json::from_str(r#"{"name":"x","style":{"padding":3}}"#).unwrap();
         assert_eq!(p.style.padding, 3.0);
         assert_eq!(p.style.corner_radius, 12.0);
-        assert_eq!(p.export.fps, 60);
+        assert_eq!(p.export.fps, ExportSettings::default().fps);
         assert_eq!(p.export.height, ExportSettings::NATIVE);
     }
 
     #[test]
     fn bitrate_formula() {
-        let e = ExportSettings { height: 1080, ..Default::default() };
+        let e = ExportSettings { height: 1080, fps: 60, ..Default::default() };
         assert_eq!(e.bitrate(1920, 1080, 10.0), (1920.0 * 1080.0 * 60.0 * 0.05) as u64);
         // Fit to 10 MB over 20 s: ~3.84 Mbit/s total minus audio.
         let t = ExportSettings { target_mb: Some(10), ..e };

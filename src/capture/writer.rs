@@ -228,16 +228,18 @@ unsafe impl Send for Sink {}
 /// frames still land in their own slot.
 pub const LAG_SECS: f64 = 0.05;
 
-fn video_settings(v: &VideoSpec) -> Retained<Dict> {
+fn video_settings(v: &VideoSpec, quality: Option<f64>) -> Retained<Dict> {
     unsafe {
-        let rate = match v.quality {
+        let rate = match quality {
             Some(q) => (AVVideoQualityKey.unwrap(), num_f(q)),
             None => (AVVideoAverageBitRateKey.unwrap(), num_i(v.bitrate as i64)),
         };
         let mut compression = vec![
             rate,
             (AVVideoExpectedSourceFrameRateKey.unwrap(), num_i(v.fps as i64)),
-            (AVVideoMaxKeyFrameIntervalDurationKey.unwrap(), num_f(2.0)),
+            // A keyframe every 2 s, in frames: some HEVC encoders (Intel
+            // Macs) reject the duration key.
+            (AVVideoMaxKeyFrameIntervalKey.unwrap(), num_i(v.fps as i64 * 2)),
             (AVVideoAllowFrameReorderingKey.unwrap(), num_b(false)),
         ];
         let codec = match v.codec {
@@ -706,10 +708,16 @@ fn open_output(path: &Path, v: &VideoSpec, system_audio: bool, mic: bool, layout
         // up to the last fragment (at most 2 s, one keyframe interval, old).
         writer.setMovieFragmentInterval(CMTime::new(2 * TIMESCALE as i64, TIMESCALE));
 
+        // Not every encoder takes constant quality (an Intel Mac's H.264
+        // doesn't): then encode for the spec's bitrate instead.
+        let mut settings = video_settings(v, v.quality);
+        if v.quality.is_some() && !writer.canApplyOutputSettings_forMediaType(Some(&settings), AVMediaTypeVideo.unwrap()) {
+            settings = video_settings(v, None);
+        }
         let video = AVAssetWriterInput::initWithMediaType_outputSettings(
             AVAssetWriterInput::alloc(),
             AVMediaTypeVideo.unwrap(),
-            Some(&video_settings(v)),
+            Some(&settings),
         );
         video.setExpectsMediaDataInRealTime(true);
         video.setMediaTimeScale(TIMESCALE);

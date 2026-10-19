@@ -382,6 +382,19 @@ impl Mic {
             }
             session.addInput(&input);
             let output = AVCaptureAudioDataOutput::new();
+            // Mono 48 kHz float, the mic track's own layout. A mic's native
+            // format (an iMac's: stereo 44.1 kHz 24-bit) made the writer
+            // fail on the first buffer (kCMSampleBufferError_ArrayTooSmall).
+            // Key constants live in AVFAudio; their values equal their names.
+            output.setAudioSettings(Some(&dict(vec![
+                (&*ns("AVFormatIDKey"), num_i(fourcc(b"lpcm") as i64)),
+                (&*ns("AVSampleRateKey"), num_f(48000.0)),
+                (&*ns("AVNumberOfChannelsKey"), num_i(1)),
+                (&*ns("AVLinearPCMBitDepthKey"), num_i(32)),
+                (&*ns("AVLinearPCMIsFloatKey"), num_b(true)),
+                (&*ns("AVLinearPCMIsNonInterleaved"), num_b(false)),
+                (&*ns("AVLinearPCMIsBigEndianKey"), num_b(false)),
+            ])));
             let this = MicOutput::alloc().set_ivars(MicIvars { shared });
             let delegate: Retained<MicOutput> = msg_send![super(this), init];
             let queue = DispatchQueue::new("rec.mic", None);

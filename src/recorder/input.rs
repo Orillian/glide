@@ -366,10 +366,13 @@ impl InputLogger {
             let mut last: Option<(f64, f64)> = None;
             let mut buttons = [false; 2];
             let mut tick: u64 = 0;
+            let light = crate::hw::light();
             while !stop2.load(Ordering::SeqCst) {
                 let now = secs(host_now());
                 let p = mouse_location();
-                if tick % 6 == 0 {
+                // Cursor shape 20 times a second (10 in light mode: each check
+                // encodes the cursor image).
+                if tick % if light { 12 } else { 6 } == 0 {
                     cursors.sample();
                 }
                 if let Some(w) = window
@@ -395,6 +398,7 @@ impl InputLogger {
                     last = Some((p.x, p.y));
                 }
                 tick += 1;
+                // 120 Hz: slower polling misses quick clicks (and their zooms).
                 std::thread::sleep(Duration::from_micros(8_333));
             }
             log.cursors = cursors.images;
