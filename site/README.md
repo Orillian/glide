@@ -31,4 +31,4 @@ The demo video is Glide's own synthetic recording (`glide synth`), restyled by `
 
 ## Deploy
 
-Import the repo as a Vercel project with the SvelteKit preset and set the Root Directory to `site`. No environment variables are needed. Open Graph URLs use `VERCEL_PROJECT_PRODUCTION_URL`, which Vercel sets at build time. Local builds fall back to `http://localhost:4173`.
+Import the repo as a Vercel project with the SvelteKit preset and set the Root Directory to `site`. No environment variables are needed. The canonical, Open Graph and JSON-LD URLs are built from `origin` in `src/lib/site.ts`, so every build, including previews and local builds, points them at `https://glide.rasmic.xyz`. `static/robots.txt` and `static/sitemap.xml` spell out the same domain, so update them too if it changes.

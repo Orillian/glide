@@ -5,5 +5,6 @@ export const version = '0.1.0';
 export const macos = 'macOS 15 or later';
 export const chips = 'Apple Silicon';
 
+export const origin = 'https://glide.rasmic.xyz';
 export const repo = 'https://github.com/michaelshimeles/glide';
 export const dmg = `${repo}/releases/latest/download/Glide-universal.dmg`;
