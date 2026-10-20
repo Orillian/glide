@@ -64,7 +64,8 @@ For the download page, from `site/`:
 - After changing the page, run the preview and check it at desktop width and 390 px, in light and dark. `curl -sI http://localhost:<port>/download` should return a 302 to the DMG URL in `site/src/lib/site.ts`.
 - Other site repos on this Mac also preview on Vite's default port 4173, often from agents running at the same time, so `localhost:4173` may serve a different site. Pick a port with nothing listening on it, run `npm run preview -- --port <port> --strictPort`, and confirm with `lsof -nP -iTCP:<port> -sTCP:LISTEN` that the listener is your process.
 - Restart `npm run preview` after every build. It indexes files at startup, so a new build's assets 404, and a request for a deleted asset from the old build crashes it.
-- If you change `site/scripts/assets.sh` or `site/scripts/demo-project.json`, rerun the script and check the sizes it prints. It needs a built app, so run `scripts/build.sh` first. The demo video should stay at a few MB.
+- If you change `site/scripts/assets.sh` or anything in `site/scripts/og/`, rerun the script and check the sizes it prints. It needs a built app, so run `scripts/build.sh` first.
+- The page's demo and feature cards are HTML. If the app's interface or behavior changes, update `site/src/lib/ui` and `site/src/lib/demo` to match, and remeasure the click targets in `site/src/lib/demo/script.ts`.
 
 For every change, `git diff --check` catches whitespace errors. Keep generated evidence in the ignored `.artifacts/` folder.
 
