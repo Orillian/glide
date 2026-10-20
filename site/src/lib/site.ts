@@ -1,10 +1,8 @@
 export const version = '0.1.0';
-
-// From dist/Glide.app: LSMinimumSystemVersion is 15.0 and the binary is arm64 only.
-// Switch `chips` to 'Apple Silicon and Intel' once releases are universal.
-export const macos = 'macOS 15 or later';
+// From support/Info.plist: LSMinimumSystemVersion is 14.0. scripts/build.sh builds for the
+// host Mac, so releases are Apple Silicon only; switch `chips` once they're universal.
+export const macos = 'macOS 14 or later';
 export const chips = 'Apple Silicon';
-
 export const origin = 'https://glide.rasmic.xyz';
 export const repo = 'https://github.com/michaelshimeles/glide';
 export const dmg = `${repo}/releases/latest/download/Glide-universal.dmg`;
