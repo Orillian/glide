@@ -10,7 +10,7 @@
 	import Showcase from '#lib/demo/Showcase.svelte';
 	import { Player } from '#lib/demo/player.svelte.js';
 	import { play } from '#lib/demo/sound.js';
-	import { reveal } from '#lib/motion.svelte.js';
+	import { loops, reducedMotion, reveal } from '#lib/motion.svelte.js';
 	import { chips, macos, origin, repo, version } from '#lib/site.js';
 	import { theme } from '#lib/theme.svelte.js';
 
@@ -140,7 +140,23 @@
 	<article class="card" style:--delay="{i * 90}ms" {@attach reveal}>
 		<item.Visual />
 		<div class="caption">
-			<h3>{item.title}</h3>
+			<div class="title">
+				<h3>{item.title}</h3>
+				{#if !reducedMotion.current}
+					<button
+						type="button"
+						class="pause"
+						aria-label={loops.paused ? 'Play animations' : 'Pause animations'}
+						onclick={() => (loops.paused = !loops.paused)}
+					>
+						{#if loops.paused}
+							<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.2v9.6L12.6 8z" /></svg>
+						{:else}
+							<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3h2.4v10H4.5zM9.1 3h2.4v10H9.1z" /></svg>
+						{/if}
+					</button>
+				{/if}
+			</div>
 			<p>{item.body}</p>
 		</div>
 	</article>
@@ -532,6 +548,43 @@
 
 	.caption {
 		padding: 20px 22px 24px;
+	}
+
+	.title {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.pause {
+		display: flex;
+		flex-shrink: 0;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		margin: -4px -6px -4px 0;
+		padding: 0;
+		border: 0;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--fg) 7%, transparent);
+		color: var(--muted);
+		cursor: pointer;
+		transition:
+			background 0.15s,
+			color 0.15s;
+	}
+
+	.pause:hover {
+		background: color-mix(in srgb, var(--fg) 12%, transparent);
+		color: var(--fg);
+	}
+
+	.pause svg {
+		width: 12px;
+		height: 12px;
+		fill: currentColor;
 	}
 
 	h3 {

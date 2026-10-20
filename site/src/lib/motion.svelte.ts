@@ -42,15 +42,19 @@ export function whileVisible(node: Element, tick: (dt: number) => void) {
 	};
 }
 
+/** Stops every `loop` clock where it is. The feature cards' pause buttons share it. */
+export const loops = $state({ paused: false });
+
 /**
- * A looping clock in milliseconds that only runs while its element is visible. With reduced motion
- * it stays on `settled`, a moment where the loop shows everything it animates.
+ * A looping clock in milliseconds that only runs while its element is visible and `loops` isn't
+ * paused. With reduced motion it stays on `settled`, a moment where the loop shows everything it
+ * animates.
  */
 export function loop(duration: number, settled: number) {
 	let elapsed = $state(0);
 
 	const observe: Attachment<HTMLElement> = (node) => {
-		if (reducedMotion.current) return;
+		if (reducedMotion.current || loops.paused) return;
 		return whileVisible(node, (dt) => (elapsed = (elapsed + dt) % duration));
 	};
 
