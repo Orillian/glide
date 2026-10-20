@@ -20,14 +20,18 @@ The Download button points at `/download`, which 302s to `https://github.com/mic
 
 ## Assets
 
-Everything in `src/lib/assets` and the icons and `og.jpg` in `static` come from `scripts/assets.sh`. The script reads the app from the repo root, so run `scripts/build.sh` there first, or point `GLIDE_REPO` at a checkout that already has a built `dist/Glide.app`. It never writes to the app's files.
+The icons in `src/lib/assets` and `static`, and `static/og.jpg`, come from `scripts/assets.sh`. The script reads the app from the repo root, so run `scripts/build.sh` there first, or point `GLIDE_REPO` at a checkout that already has a built `dist/Glide.app`. It never writes to the app's files.
 
 ```sh
 scripts/assets.sh
 GLIDE_REPO=~/src/glide scripts/assets.sh
 ```
 
-The demo video is Glide's own synthetic recording (`glide synth`), restyled by `scripts/demo-project.json` and exported by Glide, so it shows no real desktop. The editor screenshots come from `docs/screenshots` at the repo root. The Open Graph card is `scripts/og/og.html` rendered by headless Chrome. You also need `cwebp` and ImageMagick (`brew install webp imagemagick`).
+The Open Graph card is `scripts/og/og.html` rendered by headless Chrome, around a frame of Glide's own synthetic recording (`glide synth`) styled by `scripts/og/style.json`. You also need `cwebp` and ImageMagick (`brew install webp imagemagick`).
+
+## Demo and cards
+
+The demo and the feature cards are HTML and CSS recreations of Glide's interface in `src/lib/demo`, `src/lib/cards` and `src/lib/ui`, so the page ships no video and shows no real desktop. The demo's timing, click targets, captions and sound cues live in `src/lib/demo/script.ts`. `src/lib/ui/recording.ts` replays the recording with the app's spring constants for zooms and cursor smoothing, so the motion matches what Glide renders.
 
 ## Deploy
 
