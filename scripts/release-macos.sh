@@ -4,7 +4,8 @@
 # notarized and stapled, with the app icon as its volume icon. That file name is the release asset
 # the download page links to. Next to it go Glide-<version>.zip, the app alone, and appcast.xml,
 # the signed update feed that points installed copies at that zip. Everything is written to
-# $CARGO_TARGET_DIR/universal-apple-darwin/release. Upload all three to a release tagged
+# $CARGO_TARGET_DIR/universal-apple-darwin/release once every step has passed; a failed run leaves
+# the previous build's files there. Upload all three to a release tagged
 # v<version> (the script prints the command). Bump the version in Cargo.toml and support/Info.plist
 # first, since installed copies only offer a version higher than their own.
 #
@@ -96,9 +97,19 @@ for target in aarch64-apple-darwin x86_64-apple-darwin; do
   cargo build --release --locked --target "$target"
 done
 out=$CARGO_TARGET_DIR/universal-apple-darwin/release
-app=$out/Glide.app
-mkdir -p "$out"
-rm -rf "$app" "$out"/Glide-*.zip "$out/Glide.dmg" "$out/appcast.xml"
+# Everything is built in $work and moves to $out only after the last step passes, so a failed run
+# leaves the previous build's files in place.
+work=$tmp/out
+finish() {
+  mkdir -p "$out"
+  rm -rf "$out/Glide.app" "$out"/Glide-*.zip "$out/Glide.dmg" "$out/appcast.xml"
+  local f
+  for f in "$work"/*; do
+    mv "$f" "$out/"
+    echo "built $out/$(basename "$f")"
+  done
+}
+app=$work/Glide.app
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Frameworks"
 cp "$plist" "$app/Contents/Info.plist"
 lipo -create -output "$app/Contents/MacOS/Glide" \
@@ -126,7 +137,7 @@ if [ "$notarize" = 1 ]; then
   notarize "$tmp/Glide.zip" "$app"
 fi
 
-dmg=$out/Glide.dmg
+dmg=$work/Glide.dmg
 stage=$tmp/dmg
 mkdir "$stage" "$tmp/mnt" "$tmp/check"
 ditto "$app" "$stage/Glide.app"
@@ -151,13 +162,11 @@ ditto "$tmp/check/Glide.app" "$tmp/copied/Glide.app"
 hdiutil detach "$tmp/check" >/dev/null
 codesign --verify --deep --strict "$tmp/copied/Glide.app"
 [ "$notarize" = 0 ] || spctl --assess --type execute "$tmp/copied/Glide.app"
-echo "built $dmg"
 
 # ditto keeps the signature and the stapled ticket; plain zip does not.
-zip=$out/Glide-$version.zip
+zip=$work/Glide-$version.zip
 ditto -c -k --keepParent "$app" "$zip"
-echo "built $zip"
-[ "$notarize" = 1 ] || exit 0
+[ "$notarize" = 1 ] || { finish; exit 0; }
 
 # Installed copies read releases/latest/download/appcast.xml (SUFeedURL). generate_keys created
 # the key's keychain item, so it can export it without a prompt; the export lives in $tmp only
@@ -166,7 +175,7 @@ key_file=$tmp/sparkle.key
 "$sparkle/bin/generate_keys" --account "$sparkle_account" -x "$key_file" >/dev/null
 # sparkle:edSignature="…" length="…"
 enclosure=$("$sparkle/bin/sign_update" --ed-key-file "$key_file" "$zip")
-appcast=$out/appcast.xml
+appcast=$work/appcast.xml
 cat > "$appcast" <<XML
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
@@ -189,5 +198,5 @@ XML
 "$sparkle/bin/sign_update" --ed-key-file "$key_file" "$appcast"
 "$sparkle/bin/sign_update" --ed-key-file "$key_file" --verify "$appcast"
 rm -f "$key_file"
-echo "built $appcast"
-echo "publish with: gh release create v$version $dmg $zip $appcast"
+finish
+echo "publish with: gh release create v$version $out/Glide.dmg $out/$(basename "$zip") $out/appcast.xml"
