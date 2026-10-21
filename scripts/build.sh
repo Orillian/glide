@@ -15,7 +15,7 @@ STAGE=dist/.Glide.app.new
 rm -rf "$STAGE"
 mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources"
 cp support/Info.plist "$STAGE/Contents/Info.plist"
-cp "$BIN" "$STAGE/Contents/MacOS/glide"
+cp "$BIN" "$STAGE/Contents/MacOS/Glide"
 ICONSET="$CARGO_TARGET_DIR/AppIcon.iconset"
 rm -rf "$ICONSET"
 "$BIN" icon "$ICONSET" >/dev/null
@@ -38,6 +38,6 @@ rm -rf "$APP.old"
 mv "$STAGE" "$APP"
 rm -rf "$APP.old"
 codesign --verify --strict "$APP"
-ln -sf "Glide.app/Contents/MacOS/glide" dist/glide
+ln -sf "Glide.app/Contents/MacOS/Glide" dist/glide
 echo "built $APP (signed: ${IDENTITY:-ad-hoc})"
 echo "open:  open $APP      cli: dist/glide --help"
