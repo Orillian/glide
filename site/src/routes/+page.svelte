@@ -256,7 +256,7 @@
 		</ul>
 	</section>
 
-	<section id="install" class="section split" aria-labelledby="install-title">
+	<section id="install" class="section" aria-labelledby="install-title">
 		<div class="intro" {@attach reveal}>
 			<h2 id="install-title">Install</h2>
 			<p>Free and open source. {macos} on {chips}.</p>
@@ -264,15 +264,6 @@
 				{@render apple()}
 				Download for macOS
 			</a>
-		</div>
-		<div class="source" {@attach reveal}>
-			<h3>Or build it from source</h3>
-			<pre><code
-					><span>$</span> git clone {repo}
-<span>$</span> cd glide && scripts/build.sh
-<span>$</span> open dist/Glide.app</code
-				></pre>
-			<p>Needs Xcode, Rust and CMake.</p>
 		</div>
 	</section>
 </main>
@@ -680,31 +671,6 @@
 		color: var(--muted);
 		font-size: 14px;
 		line-height: 18px;
-	}
-
-	.source h3 {
-		margin-bottom: 14px;
-	}
-
-	pre {
-		margin: 0;
-		padding: 16px 18px;
-		overflow-x: auto;
-		border-radius: 12px;
-		background: var(--card);
-		box-shadow: var(--card-edge);
-		font: 13px/22px var(--mono);
-	}
-
-	pre span {
-		color: var(--muted);
-		user-select: none;
-	}
-
-	.source p {
-		margin: 12px 0 0;
-		color: var(--muted);
-		font-size: 14px;
 	}
 
 	.footer {
