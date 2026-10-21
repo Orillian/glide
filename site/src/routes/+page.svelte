@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import DownloadCount from '#lib/DownloadCount.svelte';
 	import icon from '#lib/assets/icon.webp';
 	import CursorCard from '#lib/cards/CursorCard.svelte';
 	import ExportCard from '#lib/cards/ExportCard.svelte';
@@ -208,7 +209,7 @@
 				{@render apple()}
 				Download for macOS
 			</a>
-			<p class="meta">Free and open source · Version {version} · {chips} · {macos}</p>
+			<p class="meta">Free and open source · Version {version} · {chips} · {macos}<DownloadCount {repo} /></p>
 		</div>
 	</header>
 
