@@ -1,7 +1,7 @@
 //! The Glide app icon, drawn procedurally with signed distance fields: a
-//! Big Sur-style squircle in a graphite-to-black gradient, a white cursor
-//! gliding in on a tapered motion swoosh, and a small red record dot.
-//! Rendered at any size so the .icns gets crisp pixels at every resolution.
+//! rounded tile in a graphite-to-black gradient, a white cursor gliding in on
+//! a tapered motion swoosh, and a small red record dot. Rendered at any size
+//! so the .icns gets crisp pixels at every resolution.
 
 type V = [f32; 2];
 
@@ -67,17 +67,11 @@ impl Px {
 /// Cursor arrow outline, tip at the origin, ~1 unit tall.
 const ARROW: [V; 7] = [[0.0, 0.0], [0.0, 0.74], [0.18, 0.58], [0.3, 0.86], [0.42, 0.81], [0.3, 0.54], [0.53, 0.54]];
 
-/// Distance to Apple's continuous-curvature tile: a superellipse
-/// |x|^n + |y|^n = 1 (n = 5) of half-size `half`, centred on `c`. Exact on
-/// the outline, first-order away from it (enough for anti-aliasing and soft
-/// shadows).
-fn squircle(p: V, c: V, half: f32) -> f32 {
-    const N: f32 = 5.0;
-    let (u, v) = (((p[0] - c[0]) / half).abs().max(1e-6), ((p[1] - c[1]) / half).abs().max(1e-6));
-    let f = (u.powf(N) + v.powf(N)).powf(1.0 / N);
-    let k = f.powf(1.0 - N) / half;
-    let g = len([u.powf(N - 1.0) * k, v.powf(N - 1.0) * k]);
-    (f - 1.0) / g
+/// Distance to a square of half-size `half` centred on `c`, with corners of
+/// radius `r`.
+fn rounded_square(p: V, c: V, half: f32, r: f32) -> f32 {
+    let q = [(p[0] - c[0]).abs() - half + r, (p[1] - c[1]).abs() - half + r];
+    len([q[0].max(0.0), q[1].max(0.0)]) + q[0].max(q[1]).min(0.0) - r
 }
 
 fn bezier(a: V, b: V, c: V, t: f32) -> V {
@@ -111,9 +105,13 @@ fn tapered(p: V, a: V, b: V, c: V, r0: f32, r1: f32) -> (f32, f32) {
 pub fn render(size: u32) -> Vec<u8> {
     let px = 1.0 / size as f32;
     let aa = |d: f32| (0.5 - d / px).clamp(0.0, 1.0);
-    // Apple's icon grid: an 824/1024 tile centred on the canvas.
+    // Apple's icon grid: an 824/1024 tile with 185/1024 corners, centred on
+    // the canvas. macOS 26 and later shows an icon as drawn only when its
+    // outline is exactly this, with nothing outside it (no shadow); any other
+    // shape gets shrunk onto a grey tile.
     let tile_c = [0.5, 0.5];
     let tile_h = 0.4023;
+    let tile_r = 0.1807;
     // The mark: a cursor gliding up and to the left on a curved trail.
     let tip = [0.33, 0.285];
     let scale = 0.4;
@@ -130,10 +128,7 @@ pub fn render(size: u32) -> Vec<u8> {
             let p = [(x as f32 + 0.5) * px, (y as f32 + 0.5) * px];
             let mut c = Px([0.0; 4]);
 
-            // Soft drop shadow under the tile, then the tile.
-            let d_shadow = squircle(p, [tile_c[0], tile_c[1] + 0.01], tile_h);
-            c.over([0.0; 3], 0.32 * (1.0 - smoothstep(-0.012, 0.03, d_shadow)));
-            let d_tile = squircle(p, tile_c, tile_h);
+            let d_tile = rounded_square(p, tile_c, tile_h, tile_r);
             let inside = aa(d_tile);
             // Graphite at the top to near-black at the bottom, with a faint
             // cool sheen in the upper half.
@@ -204,6 +199,17 @@ mod tests {
         let at = |x: u32, y: u32| px[((y * s + x) * 4 + 3) as usize];
         assert_eq!(at(0, 0), 0);
         assert_eq!(at(s / 2, s / 2), 255);
+    }
+
+    /// Nothing past the tile's edge, or macOS frames the icon in a grey tile.
+    #[test]
+    fn icon_is_clear_outside_the_tile() {
+        let s = 1024;
+        let px = super::render(s);
+        let at = |x: u32, y: u32| px[((y * s + x) * 4 + 3) as usize];
+        for (x, y) in [(512, 926), (512, 97), (97, 512), (926, 512), (140, 140), (884, 884)] {
+            assert_eq!(at(x, y), 0, "alpha at {x},{y}");
+        }
     }
 
     /// Graphite, white and a red dot: nothing purple (or blue-violet).

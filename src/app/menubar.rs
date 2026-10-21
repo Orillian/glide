@@ -45,6 +45,10 @@ define_class!(
         fn open_folder(&self, _s: Option<&AnyObject>) {
             super::push(Cmd::OpenFolder);
         }
+        #[unsafe(method(checkUpdates:))]
+        fn check_updates(&self, _s: Option<&AnyObject>) {
+            super::push(Cmd::CheckForUpdates);
+        }
         #[unsafe(method(quit:))]
         fn quit(&self, _s: Option<&AnyObject>) {
             super::push(Cmd::Quit);
@@ -107,6 +111,7 @@ impl MenuBar {
         menu.addItem(&NSMenuItem::separatorItem(mtm));
         menu.addItem(&item("Show Glide", Some(sel!(showWindow:)), ""));
         menu.addItem(&item("Open Projects Folder", Some(sel!(openFolder:)), ""));
+        menu.addItem(&item("Check for Updates…", Some(sel!(checkUpdates:)), ""));
         menu.addItem(&NSMenuItem::separatorItem(mtm));
         let hotkey = item("Global hotkey: ⌥⇧⌘R", None, "");
         hotkey.setEnabled(false);

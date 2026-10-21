@@ -15,6 +15,7 @@ pub mod preview;
 pub mod snapshot;
 pub mod theme;
 pub mod timeline;
+pub mod updater;
 pub mod voiceover;
 pub mod recbar;
 pub mod widgets;
@@ -55,6 +56,9 @@ pub enum Cmd {
     SelectWindow(bool),
     /// Record a source chosen from the menu bar.
     RecordSource(SourceKind),
+    /// Start Sparkle, queued at launch so it doesn't hold up the first frame.
+    StartUpdater,
+    CheckForUpdates,
     Quit,
 }
 
@@ -719,6 +723,8 @@ impl App {
             Cmd::Cancel => self.cancel_recording(false),
             Cmd::ShowWindow => self.show_main(el),
             Cmd::OpenFolder => macos::open_folder(&self.settings.dir()),
+            Cmd::StartUpdater => updater::start(),
+            Cmd::CheckForUpdates => updater::check_for_updates(),
             Cmd::Back => self.close_project(),
             Cmd::Open(p) => self.open_project(el, p),
             Cmd::RecordSource(kind) => {
@@ -1918,6 +1924,9 @@ impl ApplicationHandler for App {
         self.show_main(el);
         if let Some(p) = self.open_at_launch.take() {
             self.open_project(el, p);
+        }
+        if !self.scripted() {
+            push(Cmd::StartUpdater);
         }
     }
 

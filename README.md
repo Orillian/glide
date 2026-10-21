@@ -74,6 +74,14 @@ open dist/Glide.app
 Build output goes to `~/.cache/cargo-target/screenstudio-rs` (override with
 `CARGO_TARGET_DIR`), never into the repository.
 
+`scripts/release-macos.sh` builds the universal (Apple Silicon + Intel) app for
+macOS 14 and later, signs it with a Developer ID certificate, notarizes it and
+packages `Glide.dmg`, plus the zip and signed `appcast.xml` that installed
+copies update from (one-time credential setup is at the top of the script).
+Installed copies check that feed once a day through
+[Sparkle](https://sparkle-project.org) and offer to install a newer release;
+Glide › Check for Updates…, also in the menu bar icon's menu, checks at once.
+
 ## Command line
 
 ```sh

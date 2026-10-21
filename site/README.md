@@ -16,7 +16,7 @@ npm run preview   # serves the build on http://localhost:4173
 
 ## Download link
 
-The Download button points at `/download`, which 302s to `https://github.com/michaelshimeles/glide/releases/latest/download/Glide-universal.dmg`. It works once the latest GitHub release has an asset with that exact name. The URL, version number and system requirements all live in `src/lib/site.ts`.
+The Download button points at `/download`, which 302s to `https://github.com/michaelshimeles/glide/releases/latest/download/Glide.dmg`, the DMG that `scripts/release-macos.sh` builds. The URL, version number and system requirements all live in `src/lib/site.ts`.
 
 ## Assets
 
