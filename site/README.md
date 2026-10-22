@@ -39,6 +39,6 @@ Import the repo as a Vercel project with the SvelteKit preset and set the Root D
 
 ## Analytics
 
-`src/routes/+layout.ts` loads Vercel Web Analytics, which sets no cookies and stores no personal data. Turn it on in the Vercel project's Analytics tab. Until then, `/_vercel/insights/script.js` returns 404 and nothing gets counted. Under `npm run dev` the page loads Vercel's debug script, which logs events to the console and sends nothing.
+`src/routes/+layout.ts` loads Vercel Web Analytics, which sets no cookies and stores no personal data. Turn it on in the Vercel project's Analytics tab. Until then, the script returns 404 and nothing gets counted. On Vercel, the build gets a project-specific script path in `VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG`. Builds without it, like `npm run preview`, request `/_vercel/insights/script.js`. Under `npm run dev` the page loads Vercel's debug script, which logs events to the console and sends nothing.
 
 The layout calls `inject()` from `@vercel/analytics` because the package's SvelteKit helper subscribes to `$app/stores`, which throws in SvelteKit 3. The package also limits its `@sveltejs/kit` peer to `^1 || ^2`, so `package.json` overrides that peer with the site's own Kit. Drop both workarounds once the package supports Kit 3.
