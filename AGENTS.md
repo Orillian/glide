@@ -22,7 +22,7 @@ This repo holds Glide, a native macOS screen recorder written in Rust, and its d
 - Don't deploy to Vercel, create Vercel projects, publish GitHub releases or push tags unless Micky asks.
 - The download page claims only what the app ships. Check a feature in `src/` before the page mentions it.
 - Keep Screen Studio's name out of the page's headline, logo and assets. It appears once, in the footer's not-affiliated note.
-- The page has no analytics, tracking or third-party scripts.
+- The page's only analytics is Vercel Web Analytics, which sets no cookies and stores no personal data. Don't add other analytics, tracking or third-party scripts.
 
 ## Writing for humans
 
